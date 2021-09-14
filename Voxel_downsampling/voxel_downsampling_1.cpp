@@ -218,7 +218,7 @@ float* voxel_down_sampling(float* input_cloud, float* leaf_size, int num_points)
 	float* idx_points = (float*)malloc(idx_size);
 	bubble_sort(idx_voxels, idx_points, num_points);
 	/*printf("\nPASS 2\npoint voxel\n");
-	for (int i = 0; i < num_points; i++) printf("%0.f\t%0.f\n", idx_points[i] + 1.0f, idx_voxels[i]);*/
+	for (int i = 0; i < 20; i++) printf("%0.f\t%0.f\n", idx_points[i] + 1.0f, idx_voxels[i]);*/
 
 	//----THIRD PASS----
 	//Count output cells. We need to skip all the same adjacent idx values
@@ -227,7 +227,9 @@ float* voxel_down_sampling(float* input_cloud, float* leaf_size, int num_points)
 	int* repeat = (int*)malloc(out_size);
 	for (int i = 0; i < num_points; i++) repeat[i] = 0;
 	int num_points_out = voxel_out_cells(idx_points, idx_voxels, num_points, pos_out, repeat);
-	/*printf("\nPASS 3\npoint  voxel  pos_out  repeat\n");
+	/*printf("\nrepeat:\n");
+	for (int i = 0; i < 100; i++) printf("%d: %d\n", i + 1, repeat[i]);
+	printf("\nPASS 3\npoint  voxel  pos_out  repeat\n");
 	int j = 0;
 	for (int i = 0; i < num_points; i++)
 	{
