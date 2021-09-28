@@ -11,14 +11,15 @@
 
 float* get_synthetic_cloud(int num_points);
 float RandomFloat(float min, float max);
-int readData(const char* name, float* point_cloud);
 float* get_real_cloud(const char* name, int* num_points);
 float* voxel_down_sampling(float* input_cloud, float* leaf_size, int num_points);
 float min(int lenght, float* x, int inc);
 float max(int lenght, float* x, int inc);
-void bubble_sort(float* voxels, float* points, int n);
-int voxel_out_cells(float* idx_points, float* idx_voxels, int n, int* pos_out, int* repeat);
-void centroid(float* idx_points, int* pos_out, int* repeat, int num_points_out, float* input_cloud, float* out_cloud);
+void bubble_sort(int* voxels, int* points, int n);
+int get_max(int a[], int n);
+void radix_sort(int* a, int* idx, int n);
+int voxel_out_cells(int* idx_points, int* idx_voxels, int n, int* pos_out, int* repeat);
+void centroid(int* idx_points, int* pos_out, int* repeat, int num_points_out, float* input_cloud, float* out_cloud);
 
 int main()
 {
@@ -193,16 +194,23 @@ float* voxel_down_sampling(float* input_cloud, float* leaf_size, int num_points)
 	saxpy(&n, &a, ijk, &inc, min_b_mat, &inc);
 	//compute the indices according to the division multipliers
 	size_t idx_size = (size_t)num_points * sizeof(float);
+	size_t idx_size_int = (size_t)num_points * sizeof(int);
 	float* idx_voxels = (float*)malloc(idx_size);
+	int* idx_voxels_int = (int*)malloc((size_t)num_points * sizeof(int));
 	cblas_sgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, 1, num_points, 3, 1, div_mul, 1, min_b_mat, 3, 0, idx_voxels, 1);
+	for (int i = 0; i < num_points; i++) idx_voxels_int[i] = (int)idx_voxels[i];
 	/*printf("\nPASS 1\npoint voxel\n");
 	for (int i = 0; i < num_points; i++) printf("%d\t%0.f\n", i + 1, idx_voxels[i]);*/
 
 	//----SECOND PASS----
 	//Sort the index vector using value representing target cell as index (according to the #voxel)
 	//In effect, all points belonging to the same output will be next to each other
-	float* idx_points = (float*)malloc(idx_size);
-	bubble_sort(idx_voxels, idx_points, num_points);
+	int* idx_points = (int*)malloc(idx_size_int);
+	float start_sort = second();
+	//bubble_sort(idx_voxels_int, idx_points, num_points);
+	radix_sort(idx_voxels_int, idx_points, num_points);
+	float end_sort = second();
+	printf("Sorting took %.3f ms\n", (end_sort - start_sort) * 1000);
 	/*printf("\nPASS 2\npoint voxel\n");
 	for (int i = 0; i < 20; i++) printf("%0.f\t%0.f\n", idx_points[i] + 1.0f, idx_voxels[i]);*/
 
@@ -212,7 +220,7 @@ float* voxel_down_sampling(float* input_cloud, float* leaf_size, int num_points)
 	int* pos_out = (int*)malloc(out_size);
 	int* repeat = (int*)malloc(out_size);
 	for (int i = 0; i < num_points; i++) repeat[i] = 0;
-	int num_points_out = voxel_out_cells(idx_points, idx_voxels, num_points, pos_out, repeat);
+	int num_points_out = voxel_out_cells(idx_points, idx_voxels_int, num_points, pos_out, repeat);
 	/*printf("\nrepeat:\n");
 	for (int i = 0; i < 100; i++) printf("%d: %d\n", i + 1, repeat[i]);
 	printf("\nPASS 3\npoint  voxel  pos_out  repeat\n");
@@ -280,13 +288,13 @@ float max(int lenght, float* x, int inc)
 	return maximum;
 }
 
-void bubble_sort(float* voxels, float* points, int n)
+void bubble_sort(int* voxels, int* points, int n)
 {
 	// set the point indices in order (0,1,2,...,n)
-	for (int i = 0; i < n; i++) points[i] = (float)i;
+	for (int i = 0; i < n; i++) points[i] = i;
 
 	// sort the voxel indices array
-	float temp;
+	int temp;
 	for (int k = 0; k < n - 1; k++) {
 		// (n-k-1) is for ignoring comparisons of elements which have already been compared in earlier iterations
 		for (int i = 0; i < n - k - 1; i++) {
@@ -304,14 +312,77 @@ void bubble_sort(float* voxels, float* points, int n)
 	}
 }
 
-int voxel_out_cells(float* idx_points, float* idx_voxels, int n, int* pos_out, int* repeat)
+int get_max(int a[], int n)
+{
+	int max = a[0];
+	for (int i = 1; i < n; i++)
+		if (a[i] > max)
+			max = a[i];
+	return max;
+}
+
+void radix_sort(int* a, int* idx, int n)
+{
+	int bucket_cnt[10] = {};
+	size_t bucket_size = (size_t)10 * (size_t)n * sizeof(int);
+	int* bucket = (int*)malloc(bucket_size);
+	int* idx_bucket = (int*)malloc(bucket_size);;
+	int i, j, k, r, NOP = 0, divisor = 1, lar;
+
+	// set the indices in order (0,1,2,...,n)
+	for (int i = 0; i < n; i++) idx[i] = i;
+
+	//count the number of passes
+	lar = get_max(a, n);
+	while (lar > 0)
+	{
+		NOP++;     // No of passes
+		lar /= 10; // largest number
+	}
+
+	//go trough each pass (ones, tens, hundrends, ...)
+	for (int pass = 0; pass < NOP; pass++)
+	{
+		//initialize the bucket counter with zeros
+		for (i = 0; i < 10; i++)
+		{
+			bucket_cnt[i] = 0;
+		}
+
+		//compute the current digit for each number
+		for (i = 0; i < n; i++)
+		{
+			r = (a[i] / divisor) % 10;//digit
+			bucket[r + 10 * bucket_cnt[r]] = a[i];//fill the bucket with the correspondent number
+			idx_bucket[r + 10 * bucket_cnt[r]] = idx[i];//and the other with the index
+			bucket_cnt[r] += 1;//update the counter
+		}
+
+		//sort taking numbers in order
+		i = 0;
+		for (k = 0; k < 10; k++)
+		{
+			for (j = 0; j < bucket_cnt[k]; j++)
+			{
+				a[i] = bucket[k + 10 * j];
+				idx[i] = idx_bucket[k + 10 * j];
+				i++;
+			}
+		}
+
+		//update the divisor
+		divisor *= 10;
+	}
+}
+
+int voxel_out_cells(int* idx_points, int* idx_voxels, int n, int* pos_out, int* repeat)
 {
 	int counter = 0;
 	pos_out[counter] = 0;
 	repeat[counter]++;
 	for (int i = 1; i < n; i++)
 	{
-		if ((int)idx_voxels[i] != (int)idx_voxels[i - 1]) //change
+		if (idx_voxels[i] != idx_voxels[i - 1]) //change
 		{
 			counter++;
 			pos_out[counter] = i;
@@ -321,7 +392,7 @@ int voxel_out_cells(float* idx_points, float* idx_voxels, int n, int* pos_out, i
 	return (counter + 1);
 }
 
-void centroid(float* idx_points, int* pos_out, int* repeat, int num_points_out, float* input_cloud, float* out_cloud)
+void centroid(int* idx_points, int* pos_out, int* repeat, int num_points_out, float* input_cloud, float* out_cloud)
 {
 	float sum[3] = {};
 	for (int i = 0; i < num_points_out; i++)
@@ -330,9 +401,9 @@ void centroid(float* idx_points, int* pos_out, int* repeat, int num_points_out, 
 		sum[0] = 0.0f; sum[1] = 0.0f; sum[2] = 0.0f;
 		for (int j = 0; j < rep; j++)
 		{
-			sum[0] += input_cloud[(int)idx_points[pos_out[i] + j] * 3 + 0];
-			sum[1] += input_cloud[(int)idx_points[pos_out[i] + j] * 3 + 1];
-			sum[2] += input_cloud[(int)idx_points[pos_out[i] + j] * 3 + 2];
+			sum[0] += input_cloud[idx_points[pos_out[i] + j] * 3 + 0];
+			sum[1] += input_cloud[idx_points[pos_out[i] + j] * 3 + 1];
+			sum[2] += input_cloud[idx_points[pos_out[i] + j] * 3 + 2];
 		}
 		out_cloud[i * 3 + 0] = sum[0] / (float)rep;
 		out_cloud[i * 3 + 1] = sum[1] / (float)rep;

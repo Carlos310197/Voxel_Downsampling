@@ -23,43 +23,7 @@ Author: Carlos Huapaya
 #define LEAF_SIZE 300.0f
 
 float* read_point_cloud(const char* name, int* num_points);
-
-__device__
-float min(int lenght, float* x, int inc)
-{
-	float minimum = x[0];//initialize minimum
-	for (int i = inc; i < lenght; i += inc)
-	{
-		if (x[i] < minimum)
-			minimum = x[i];
-	}
-	return minimum;
-}
-
-__device__
-float max(int lenght, float* x, int inc)
-{
-	float maximum = x[0];//initialize maximum
-	for (int i = inc; i < lenght; i += inc)
-	{
-		if (x[i] > maximum)
-			maximum = x[i];
-	}
-	return maximum;
-}
-
-__global__
-int generate_voxel_grid(float* d_sphere_pc, float* d_leaf_size, float* d_idx_voxels, int* d_pos_out, int* d_repeat)
-{
-	//thread ID
-	int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
-
-	//-------SET THE PARAMETERS-------
-	float inv_leaf_size[3] = { 1.0f / d_leaf_size[0], 1.0f / d_leaf_size[1], 1.0f / d_leaf_size[2] };
-
-	//get the minimum and maximum dimensions
-
-}
+void generate_voxel_structure(float* input_cloud, float* leaf_size, int num_points);
 
 int main()
 {
@@ -137,6 +101,16 @@ int main()
 		fprintf(stderr, "cudaMemcpy ECNT failed!");
 		return -1;
 	}
+
+
+
+
+
+
+
+
+
+
 
 	//setting threads: For now, to make it easy
 	int threadsPerBlock = 1024;
