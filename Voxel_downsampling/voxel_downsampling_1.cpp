@@ -142,28 +142,15 @@ float* voxel_down_sampling(float* input_cloud, float* leaf_size, int num_points)
 	float inv_leaf_size[3];
 	for (int i = 0; i < 3; i++) inv_leaf_size[i] = 1.0f / leaf_size[i];
 
-	//find x, y and z arrays of the point cloud
-	size_t coord_size = (size_t)num_points * sizeof(float);
-	float* x = (float*)malloc(coord_size);
-	float* y = (float*)malloc(coord_size);
-	float* z = (float*)malloc(coord_size);
-	if(!x || !y || !z) { printf("Error allocating memory x, y or z arrays\n"); return NULL; }
-	for (int i = 0; i < num_points; i++)
-	{
-		x[i] = input_cloud[i * 3 + 0];
-		y[i] = input_cloud[i * 3 + 1];
-		z[i] = input_cloud[i * 3 + 2];
-	}
-
 	//get the minimum and maximum dimensions
 	// cblas_isamin and cblas_isamax compute the minimum and maximum ABSOLUTE values
 	float min_p[3] = {}, max_p[3] = {};
-	min_p[0] = min(num_points, x, 1);
-	min_p[1] = min(num_points, y, 1);
-	min_p[2] = min(num_points, z, 1);
-	max_p[0] = max(num_points, x, 1);
-	max_p[1] = max(num_points, y, 1);
-	max_p[2] = max(num_points, z, 1);
+	min_p[0] = min(3 * num_points, input_cloud + 0, 3);
+	min_p[1] = min(3 * num_points, input_cloud + 1, 3);
+	min_p[2] = min(3 * num_points, input_cloud + 2, 3);
+	max_p[0] = max(3 * num_points, input_cloud + 0, 3);
+	max_p[1] = max(3 * num_points, input_cloud + 1, 3);
+	max_p[2] = max(3 * num_points, input_cloud + 2, 3);
 	printf("min dimensions\nx: %.3f\ny: %.3f\nz: %.3f\n", min_p[0], min_p[1], min_p[2]);
 	printf("max dimensions\nx: %.3f\ny: %.3f\nz: %.3f\n", max_p[0], max_p[1], max_p[2]);
 
@@ -214,7 +201,6 @@ float* voxel_down_sampling(float* input_cloud, float* leaf_size, int num_points)
 	//----SECOND PASS----
 	//Sort the index vector using value representing target cell as index (according to the #voxel)
 	//In effect, all points belonging to the same output will be next to each other
-
 	float* idx_points = (float*)malloc(idx_size);
 	bubble_sort(idx_voxels, idx_points, num_points);
 	/*printf("\nPASS 2\npoint voxel\n");
@@ -259,13 +245,12 @@ float* voxel_down_sampling(float* input_cloud, float* leaf_size, int num_points)
 	fclose(document);//close the document
 
 	//write out the voxels with the number of points inside each
-	fopen_s(&document, "log_voxels.csv", "w");//open the CSV document
-	if (!document) { printf("File opening failed\n"); return NULL; }
-	fprintf(document, "voxels,num_points\n");//header
-	for (int i = 0; i < num_points_out; i++) fprintf(document, "%d\n", (int)idx_voxels[i]);
-	fclose(document);//close the document
+	//fopen_s(&document, "log_voxels.csv", "w");//open the CSV document
+	//if (!document) { printf("File opening failed\n"); return NULL; }
+	//fprintf(document, "voxels,num_points\n");//header
+	//for (int i = 0; i < num_points_out; i++) fprintf(document, "%d\n", (int)idx_voxels[i]);
+	//fclose(document);//close the document
 
-	free(x), free(y), free(z);
 	free(ijk), free(min_b_mat);
 	free(idx_voxels), free(idx_points);
 	free(pos_out), free(repeat);
@@ -276,7 +261,7 @@ float* voxel_down_sampling(float* input_cloud, float* leaf_size, int num_points)
 float min(int lenght, float* x, int inc)
 {
 	float minimum = x[0];//initialize minimum
-	for (int i = 1; i < lenght; i += inc) 
+	for (int i = inc; i < lenght; i += inc) 
 	{ 
 		if (x[i] < minimum) 
 			minimum = x[i]; 
@@ -287,8 +272,8 @@ float min(int lenght, float* x, int inc)
 float max(int lenght, float* x, int inc)
 {
 	float maximum = x[0];//initialize maximum
-	for (int i = 1; i < lenght; i += inc) 
-	{ 
+	for (int i = inc; i < lenght; i += inc) 
+	{
 		if (x[i] > maximum) 
 			maximum = x[i]; 
 	}

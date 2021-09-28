@@ -1,7 +1,7 @@
 %%
 %Autor: Carlos Huapaya
 
-function donwsampled_cloud = voxel_dowsampling(point_cloud, leaf_size)
+function [donwsampled_cloud, idx_points, pos_out, repeat] = voxel_downsampling(point_cloud, leaf_size)
 
     %------------------------------
     %----Set the main variables----
@@ -23,7 +23,6 @@ function donwsampled_cloud = voxel_dowsampling(point_cloud, leaf_size)
     
     % Set up the division multiplier
     div_b_mul = [1 div_b(1) div_b(1)*div_b(2)];
-    n_voxels = div_b(1)*div_b(2)*div_b(3);
     
     %------------------------------
     %----------First pass----------
@@ -57,7 +56,7 @@ function donwsampled_cloud = voxel_dowsampling(point_cloud, leaf_size)
         repeat(counter) = repeat(counter) + 1;
     end
     out_size = counter;%update the number of output points
-    fprintf("Number of filled voxels: %d.\n", counter);
+    fprintf("Number of filled voxels: %d\n", counter);
     
     %------------------------------
     %----------Fourth pass---------
