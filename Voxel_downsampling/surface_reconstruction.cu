@@ -18,7 +18,6 @@ Author: Carlos Huapaya
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #include <stdint.h>
-#include "utlis.h"
 
 #define LEAF_SIZE 300.0f
 
@@ -112,7 +111,7 @@ int main()
 
 
 
-	//setting threads: For now, to make it easy
+	//setting number of threads
 	int threadsPerBlock = 1024;
 	int numBlocks = num_points/threadsPerBlock;
 	printf("Number of threads per block: %d\n", threadsPerBlock);

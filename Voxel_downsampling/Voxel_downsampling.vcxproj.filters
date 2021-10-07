@@ -25,8 +25,8 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="utlis.h">
+    <CudaCompile Include="utlis.cu">
       <Filter>Source Files</Filter>
-    </ClInclude>
+    </CudaCompile>
   </ItemGroup>
 </Project>
