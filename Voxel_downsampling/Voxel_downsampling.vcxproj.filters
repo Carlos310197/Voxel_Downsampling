@@ -20,10 +20,13 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <CudaCompile Include="surface_reconstruction.cu">
+    <CudaCompile Include="main_voxel_reconstruction.cu">
       <Filter>Source Files</Filter>
     </CudaCompile>
-    <CudaCompile Include="voxe_structure.cu">
+    <CudaCompile Include="voxel_structure.cu">
+      <Filter>Source Files</Filter>
+    </CudaCompile>
+    <CudaCompile Include="surface_reconstruction.cu">
       <Filter>Source Files</Filter>
     </CudaCompile>
   </ItemGroup>

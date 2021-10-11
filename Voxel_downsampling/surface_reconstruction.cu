@@ -1,110 +1,79 @@
-/*
-Surface Reconstruction for any OS1 LiDAR based on voxel downsampling of a point cloud
-Author: Carlos Huapaya
-*/
-
-//Input: Non-overlapped point cloud and its resulting surface reconstruction arrays
-//Output: Surface reconstruction of the given point cloud based on the voxel downsampling algorithm (DXF format)
-
-///NOTES:
-//The size of the voxels has to be a user input (for now).
-//There is a correspondence between the size of the voxels and the form of the scanned scene.
-//The greater the voxels, the more information loss of the scene and so the less number of triangles (lighter DXF file)
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
+#include <stdint.h>
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #include <helper_cuda.h>
-#include <helper_functions.h>
+#include <helper_functions.h>  
 
-#define LEAF_SIZE 800.0f
-
-float* read_point_cloud(const char* name, int* num_points);
-int generate_voxel_structure(float* h_input_cloud, float* d_input_cloud, int num_points, float* h_leaf_size, int* h_idx_points, int* h_idx_voxels, int* h_pos_out, int* h_repeat);
-
-int main()
+__global__
+void replace_idx(int* d_surface, int idx_change, int idx_replace)
 {
-	int n_donuts = 6;//number of donuts to process
-	const char sphere_name[] = "dataXYZ1.csv";//name of the input cloud
-	int num_points = 0;//initialize the number of points in the cloud
-	//cudaError_t err, cudaStatus;
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-	//------------------------------------------
-	//-----------Read the point cloud-----------
-	//------------------------------------------
-	float* h_sphere_pc = read_point_cloud(sphere_name, &num_points);
-	if (h_sphere_pc == NULL) return -1;//check if there was any errors
-	printf("Number of points read: %d\n", num_points);
-
-	//allocate memory for the point cloud in the GPU
-	float* d_sphere_pc;
-	size_t bytes_sphere = (size_t)3 * (size_t)num_points * sizeof(float);
-	checkCudaErrors(cudaMalloc((void**)&d_sphere_pc, bytes_sphere));
-
-	//transfer the point cloud from the CPU to GPU
-	checkCudaErrors(cudaMemcpy(d_sphere_pc, h_sphere_pc, bytes_sphere, cudaMemcpyHostToDevice));
-
-	//------------------------------------------
-	//-----Create the voxel grid structure------
-	//------------------------------------------
-	float h_leaf_size[3] = { LEAF_SIZE, LEAF_SIZE, LEAF_SIZE };// size of voxel
-	int* h_idx_points = NULL, * h_idx_voxels = NULL, * h_pos_out = NULL, * h_repeat = NULL;
-
-	// generate the voxel grid structure
-	int num_points_out = generate_voxel_structure(h_sphere_pc, d_sphere_pc, num_points, h_leaf_size, h_idx_points, h_idx_voxels, h_pos_out, h_repeat);
-	printf("Number of downsampled points: %d\n", num_points_out);
-
-	//------------------------------------------
-	//----Compute the surface reconstruction----
-	//------------------------------------------
-
-
-
-	return 0;
+	if (d_surface[tid * 3 + 0] == idx_change) d_surface[tid * 3 + 0] = idx_replace;
+	if (d_surface[tid * 3 + 1] == idx_change) d_surface[tid * 3 + 1] = idx_replace;
+	if (d_surface[tid * 3 + 1] == idx_change) d_surface[tid * 3 + 2] = idx_replace;
 }
 
-float* read_point_cloud(const char* name, int* num_points)
+//----FIRST PASS----
+//Group connections from all points in a voxel
+__global__
+void first_pass(float* input_cloud, int* surface, int* idx_points, int* pos_out, int* repeat, int num_points_out, int num_points)
 {
-	//initialize memory for the point cloud with 3 points
-	size_t pc_bytes = (size_t)(3) * 3 * sizeof(float);
-	size_t new_pc_bytes;
-	float* point_cloud = (float*)malloc(pc_bytes);
-	if (!point_cloud) { printf("Error allocating memory for point cloud\n"); return NULL; }
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-	//read from the file
-	const int N_LINE = 2048;
-	FILE* document;
-	fopen_s(&document, name, "r");//open the CSV document
-	if (!document) { printf("File opening failed\n"); return NULL; }
-	char line[N_LINE]; //pointer to the string in each line
-	char* token = NULL;
-	char sep[] = ",\n"; //space separation
-	char* next_token = NULL;
-	char* next_ptr = NULL;
+	int block_size = 1024, grid_size = num_points / block_size + 1;//for replacement
+	int idx, idx_in_voxel;
+	float centroid[3] = {};
 
-	fgets(line, N_LINE, document);//read header
-
-	//the cloud is stored using column-major format
-	int i = 0;
-	*num_points = 0;
-	while (fgets(line, N_LINE, document) != NULL)
+	//take all valid points and with repeatitions greater than 1
+	if (tid < num_points_out && repeat[tid] > 1)
 	{
-		new_pc_bytes = (size_t)(3) * ((size_t)i + 1) * sizeof(float);
-		if (i > 0) point_cloud = (float*)realloc(point_cloud, new_pc_bytes);//reallocate memory
-		if (!point_cloud) { printf("Error allocating memory for point cloud\n"); return NULL; }
-		token = strtok_s(line, sep, &next_token);
-		while (token != NULL)//on the line
+		//get the first index of the voxel
+		idx = idx_points[pos_out[tid]];
+		centroid[0] = 0; centroid[1] = 0; centroid[2] = 0;
+		for (int i = 1; i < repeat[tid]; i++)
 		{
-			point_cloud[i] = strtof(token, &next_ptr);//convert from string to float
-			token = strtok_s(NULL, sep, &next_token);//read next string
-			i++;
+			idx_in_voxel = idx_points[pos_out[tid] + i];
+			replace_idx <<< grid_size, block_size >>> (surface, idx_in_voxel, idx);
+			centroid[0] += input_cloud[idx_in_voxel * 3 + 0];
+			centroid[1] += input_cloud[idx_in_voxel * 3 + 1];
+			centroid[2] += input_cloud[idx_in_voxel * 3 + 2];
 		}
-		(*num_points)++;
+		input_cloud[idx * 3 + 0] = centroid[0] / repeat[tid];
+		input_cloud[idx * 3 + 1] = centroid[1] / repeat[tid];
+		input_cloud[idx * 3 + 2] = centroid[2] / repeat[tid];
 	}
+	//__syncthreads();
+}
 
-	fclose(document);//close the document
-	return point_cloud;
+__global__
+void second_pass()
+{
+
+}
+
+int generate_surface_reconstruction(int* d_surface, float* d_input_cloud, int* h_idx_points, int* h_pos_out, int* h_repeat, int num_points_out)
+{
+	// allocate memory on GPU
+	int* d_pos_out, * d_repeat;
+	size_t bytes_out_int = (size_t)num_points_out * sizeof(int);
+	checkCudaErrors(cudaMalloc(&d_pos_out, bytes_out_int));
+	checkCudaErrors(cudaMalloc(&d_repeat, bytes_out_int));
+
+	// transfer data from CPU to GPU
+	checkCudaErrors(cudaMemcpy(d_pos_out, h_pos_out, bytes_out_int, cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_repeat, h_repeat, bytes_out_int, cudaMemcpyHostToDevice));
+
+	// number of threads
+	int block_size = 1024, grid_size = num_points_out / block_size + 1;
+	printf("\nBlock size: %d\n", block_size);
+	printf("Grid size: %d\n", grid_size);
+	printf("Total number of threads: %d\n", block_size * grid_size);
+	cudaError_t err;
+
+	first_pass <<< grid_size, block_size >>> ();
 }

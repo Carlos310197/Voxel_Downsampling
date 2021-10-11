@@ -58,7 +58,7 @@ void first_pass(float* point_cloud, int num_points, float* min_b, float* div_mul
 	idx_voxels[tid] = (int)((my_floor(point_cloud[tid * 3 + 0] * inv_leaf_size[0]) - min_b[0]) * div_mul[0] +
 							(my_floor(point_cloud[tid * 3 + 1] * inv_leaf_size[1]) - min_b[1]) * div_mul[1] +
 							(my_floor(point_cloud[tid * 3 + 2] * inv_leaf_size[2]) - min_b[2]) * div_mul[2]);
-	if (tid < 19460 && tid > 19450) printf("%d: %d\n", tid + 1, idx_voxels[tid]);
+	//if (tid >= 52049 && tid <= 52099) printf("%d: %d\n", tid + 1, idx_voxels[tid]);
 	/*if (tid == 0) printf("inv_leaf_size: [%.4f,%.4f,%.4f]\n",inv_leaf_size[0],inv_leaf_size[1],inv_leaf_size[2]);
 	if (tid == 0) printf("div_mul: [%.3f,%.3f,%.3f]\n", div_mul[0], div_mul[1], div_mul[2]);
 	if (tid == 0) printf("min_b: [%.3f,%.3f,%.3f]\n", min_b[0], min_b[1], min_b[2]);*/
@@ -156,8 +156,8 @@ int generate_voxel_structure(float* h_input_cloud, float* d_input_cloud, int num
 	max_p[0] = max(3 * num_points, h_input_cloud + 0, 3);
 	max_p[1] = max(3 * num_points, h_input_cloud + 1, 3);
 	max_p[2] = max(3 * num_points, h_input_cloud + 2, 3);
-	printf("min dimensions\nx: %.3f\ny: %.3f\nz: %.3f\n", min_p[0], min_p[1], min_p[2]);
-	printf("max dimensions\nx: %.3f\ny: %.3f\nz: %.3f\n", max_p[0], max_p[1], max_p[2]);
+	/*printf("min dimensions\nx: %.3f\ny: %.3f\nz: %.3f\n", min_p[0], min_p[1], min_p[2]);
+	printf("max dimensions\nx: %.3f\ny: %.3f\nz: %.3f\n", max_p[0], max_p[1], max_p[2]);*/
 
 	// compute the minimum and maximum bounding box values
 	// and compute the number of divisions along all axis
@@ -170,7 +170,7 @@ int generate_voxel_structure(float* h_input_cloud, float* d_input_cloud, int num
 		h_div_b[i] = max_b[i] - h_min_b[i] + 1.0f;
 	}
 	int n_voxels = (int)(h_div_b[2], h_div_b[0] * h_div_b[1] * h_div_b[2]);
-	printf("\nVoxel in x axis: %.0f\nVoxel in y axis: %.0f\nVoxel in z axis: %.0f\nTotal number of voxels: %d\n",
+	printf("\nNumber of voxels in x axis: %.0f\nNumber of voxels in y axis: %.0f\nNumber of voxels in z axis: %.0f\nTotal number of voxels: %d\n",
 		h_div_b[0], h_div_b[1], h_div_b[2], n_voxels);
 
 	// set up the division multiplier
@@ -181,7 +181,7 @@ int generate_voxel_structure(float* h_input_cloud, float* d_input_cloud, int num
 	int* d_idx_voxels;
 	size_t size_input_cloud = (size_t)num_points * (size_t)3 * sizeof(float);
 	size_t size_3f = (size_t)3 * sizeof(float);
-	size_t size_idx = (size_t)num_points * (size_t)3 * sizeof(int);
+	size_t size_idx = (size_t)num_points * sizeof(int);
 
 	// allocate memory on GPU
 	checkCudaErrors(cudaMalloc(&d_min_b, size_3f));
@@ -196,6 +196,9 @@ int generate_voxel_structure(float* h_input_cloud, float* d_input_cloud, int num
 
 	// number of threads
 	int block_size = 1024, grid_size = num_points / block_size;
+	printf("\nBlock size: %d\n",block_size);
+	printf("Grid size: %d\n", grid_size);
+	printf("Total number of threads: %d\n", block_size * grid_size);
 	cudaError_t err;
 
 	//----FIRST PASS----
@@ -206,15 +209,20 @@ int generate_voxel_structure(float* h_input_cloud, float* d_input_cloud, int num
 
 	// copy out the idx_voxels to the CPU
 	h_idx_voxels = (int*)malloc(size_idx);
-	checkCudaErrors(cudaMemcpy(h_idx_voxels, d_idx_voxels, size_3f, cudaMemcpyDeviceToHost));
-	/*printf("h_idx_voxels:\n");
-	for (int i = 0; i < num_points; i++) printf("%d: %d\n", i + 1, h_idx_voxels);*/
+	checkCudaErrors(cudaMemcpy(h_idx_voxels, d_idx_voxels, size_idx, cudaMemcpyDeviceToHost));
+	/*FILE* doc;
+	fopen_s(&doc, "PASS1_idx.csv", "w");
+	for (int i = 0; i < num_points; i++) 
+		fprintf_s(doc, "%d\n", h_idx_voxels[i]);
+	fclose(doc);*/
+	/*printf("\nh_idx_voxels:\n");
+	for (int i = 52049; i < 52100; i++) printf("%d: %d\n", i + 1, h_idx_voxels[i]);*/
 
 	//----SECOND PASS----
 	h_idx_points = (int*)malloc(size_idx);
 	second_pass(h_idx_voxels, h_idx_points, num_points);
-	printf("h_idx_voxels:\n");
-	for (int i = 0; i < 10; i++) printf("%d: %d\n", i + 1, h_idx_voxels);
+	/*printf("\nh_idx_voxels:\n");
+	for (int i = 52049; i < 52100; i++) printf("%d: %d\n", i + 1, h_idx_voxels[i]);*/
 
 	//----THIRD PASS----
 	h_pos_out = (int*)malloc(size_idx);
