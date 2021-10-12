@@ -262,8 +262,8 @@ float* voxel_down_sampling(float* input_cloud, float* leaf_size, int num_points)
 	free(ijk), free(min_b_mat);
 	free(idx_voxels), free(idx_points);
 	free(pos_out), free(repeat);
-	free(output_cloud);
-	return NULL;
+	
+	return output_cloud;
 }
 
 float min(int lenght, float* x, int inc)

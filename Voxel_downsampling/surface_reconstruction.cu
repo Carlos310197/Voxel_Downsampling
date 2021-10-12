@@ -1,129 +1,79 @@
-/*
-Surface Reconstruction for any OS1 LiDAR based on voxel downsampling of a point cloud
-Author: Carlos Huapaya
-*/
-
-//Input: Non-overlapped point cloud and its resulting surface reconstruction arrays
-//Output: Surface reconstruction of the given point cloud based on the voxel downsampling algorithm (DXF format)
-
-///NOTES:
-//The size of the voxels has to be a user input (for now).
-//There is a correspondence between the size of the voxels and the form of the scanned scene.
-//The greater the voxels, the more information loss of the scene and so the less number of triangles (lighter DXF file)
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
+#include <stdint.h>
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
-#include <stdint.h>
+#include <helper_cuda.h>
+#include <helper_functions.h>  
 
-#define LEAF_SIZE 300.0f
-
-float* read_point_cloud(const char* name, int* num_points);
-void generate_voxel_structure(float* input_cloud, float* leaf_size, int num_points);
-
-int main()
+__global__
+void replace_idx(int* d_surface, int idx_change, int idx_replace)
 {
-	int n_donuts = 6;//number of donuts to process
-	const char sphere_name[] = "dataXYZ1.csv";//name of the input cloud
-	int num_points = 0;//initialize the number of points in the cloud
-	cudaError_t err, cudaStatus;
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-	//------------------------------------------
-	//-----------Read the point cloud-----------
-	//------------------------------------------
-	float* h_sphere_pc = read_point_cloud(sphere_name, &num_points);
-	if (h_sphere_pc == NULL) return -1;//check if there was any errors
-	printf("Number of points read: %d\n", num_points);
+	if (d_surface[tid * 3 + 0] == idx_change) d_surface[tid * 3 + 0] = idx_replace;
+	if (d_surface[tid * 3 + 1] == idx_change) d_surface[tid * 3 + 1] = idx_replace;
+	if (d_surface[tid * 3 + 1] == idx_change) d_surface[tid * 3 + 2] = idx_replace;
+}
 
-	//allocate memory for the point cloud in the GPU
-	float* d_sphere_pc;
-	size_t bytes_sphere = 3 * num_points * sizeof(float);
-	cudaStatus = cudaMalloc((void**)&d_sphere_pc, bytes_sphere);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc RANGE failed!");
-		return -1;
+//----FIRST PASS----
+//Group connections from all points in a voxel
+__global__
+void first_pass(float* input_cloud, int* surface, int* idx_points, int* pos_out, int* repeat, int num_points_out, int num_points)
+{
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+
+	int block_size = 1024, grid_size = num_points / block_size + 1;//for replacement
+	int idx, idx_in_voxel;
+	float centroid[3] = {};
+
+	//take all valid points and with repeatitions greater than 1
+	if (tid < num_points_out && repeat[tid] > 1)
+	{
+		//get the first index of the voxel
+		idx = idx_points[pos_out[tid]];
+		centroid[0] = 0; centroid[1] = 0; centroid[2] = 0;
+		for (int i = 1; i < repeat[tid]; i++)
+		{
+			idx_in_voxel = idx_points[pos_out[tid] + i];
+			replace_idx <<< grid_size, block_size >>> (surface, idx_in_voxel, idx);
+			centroid[0] += input_cloud[idx_in_voxel * 3 + 0];
+			centroid[1] += input_cloud[idx_in_voxel * 3 + 1];
+			centroid[2] += input_cloud[idx_in_voxel * 3 + 2];
+		}
+		input_cloud[idx * 3 + 0] = centroid[0] / repeat[tid];
+		input_cloud[idx * 3 + 1] = centroid[1] / repeat[tid];
+		input_cloud[idx * 3 + 2] = centroid[2] / repeat[tid];
 	}
+	//__syncthreads();
+}
 
-	//transfer the point cloud from the CPU to GPU
-	cudaStatus = cudaMemcpy(d_sphere_pc, h_sphere_pc, bytes_sphere, cudaMemcpyHostToDevice);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy ECNT failed!");
-		return -1;
-	}
+__global__
+void second_pass()
+{
 
-	//------------------------------------------
-	//-----Create the voxel grid structure------
-	//------------------------------------------
-	
-	//allocate memory for the size of the voxels on CPU
-	float h_leaf_size[] = { LEAF_SIZE, LEAF_SIZE, LEAF_SIZE };// size of voxel
-	float d_leaf_size;
-	cudaStatus = cudaMalloc((void**)&d_leaf_size, 3 * sizeof(float*));
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc RANGE failed!");
-		return -1;
-	}
-	
-	//allocate memory for voxel structure on CPU
-	size_t size_out_f = (size_t)num_points * sizeof(float);
-	size_t size_out_i = (size_t)num_points * sizeof(int);
-	float* h_idx_voxels = (float*)malloc(size_out_f);//see if used later
-	int* h_pos_out = (int*)malloc(size_out_i);//see if used later
-	int* h_repeat = (int*)malloc(size_out_i);
-	for (int i = 0; i < num_points; i++) h_repeat[i] = 0;//fill the repeat array with zeros
+}
 
-	//allocate memory for voxel structure on GPU
-	float* d_idx_voxels;
+int generate_surface_reconstruction(int* d_surface, float* d_input_cloud, int* h_idx_points, int* h_pos_out, int* h_repeat, int num_points_out)
+{
+	// allocate memory on GPU
 	int* d_pos_out, * d_repeat;
-	cudaStatus = cudaMalloc((void**)&d_idx_voxels, size_out_f);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc RANGE failed!");
-		return -1;
-	}
-	cudaStatus = cudaMalloc((void**)&d_pos_out, size_out_i);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc RANGE failed!");
-		return -1;
-	}
-	cudaStatus = cudaMalloc((void**)&d_repeat, size_out_i);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc RANGE failed!");
-		return -1;
-	}
-	
-	//transfer the data of the repeat array from CPU to GPU
-	cudaStatus = cudaMemcpy(d_repeat, h_repeat, size_out_i, cudaMemcpyHostToDevice);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy ECNT failed!");
-		return -1;
-	}
+	size_t bytes_out_int = (size_t)num_points_out * sizeof(int);
+	checkCudaErrors(cudaMalloc(&d_pos_out, bytes_out_int));
+	checkCudaErrors(cudaMalloc(&d_repeat, bytes_out_int));
 
+	// transfer data from CPU to GPU
+	checkCudaErrors(cudaMemcpy(d_pos_out, h_pos_out, bytes_out_int, cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(d_repeat, h_repeat, bytes_out_int, cudaMemcpyHostToDevice));
 
+	// number of threads
+	int block_size = 1024, grid_size = num_points_out / block_size + 1;
+	printf("\nBlock size: %d\n", block_size);
+	printf("Grid size: %d\n", grid_size);
+	printf("Total number of threads: %d\n", block_size * grid_size);
+	cudaError_t err;
 
-
-
-
-
-
-
-
-
-	//setting number of threads
-	int threadsPerBlock = 1024;
-	int numBlocks = num_points/threadsPerBlock;
-	printf("Number of threads per block: %d\n", threadsPerBlock);
-	printf("Number of blocks: %d\n", numBlocks);
-
-	//compute the voxel grid structure
-	generate_voxel_grid << < numBlocks, threadsPerBlock >> > (d_sphere_pc, d_leaf_size, d_idx_voxels, d_pos_out, d_repeat);
-	cudaDeviceSynchronize();
-	err = cudaGetLastError();
-	if (err != cudaSuccess) printf("Error in generate_voxel_grid kernel: %s\n", cudaGetErrorString(err));
-
-
-
-	return 0;
+	first_pass <<< grid_size, block_size >>> ();
 }
