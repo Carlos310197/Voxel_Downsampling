@@ -141,7 +141,7 @@ int third_pass(int* idx_points, int* idx_voxels, int n, int* pos_out, int* repea
 	return (counter + 1);
 }
 
-int generate_voxel_structure(float* h_input_cloud, float* d_input_cloud, int num_points, float* h_leaf_size, int* h_idx_points, int* h_idx_voxels, int* h_pos_out, int* h_repeat)
+int generate_voxel_structure(float* h_input_cloud, float* d_input_cloud, int num_points, float* h_leaf_size, int** h_idx_points, int** h_idx_voxels, int** h_pos_out, int** h_repeat)
 {
 	//-------SET THE PARAMETERS-------
 	float h_inv_leaf_size[3];
@@ -208,8 +208,8 @@ int generate_voxel_structure(float* h_input_cloud, float* d_input_cloud, int num
 	if (err != cudaSuccess) printf("Error in first_pass kernel: %s\n", cudaGetErrorString(err));
 
 	// copy out the idx_voxels to the CPU
-	h_idx_voxels = (int*)malloc(size_idx);
-	checkCudaErrors(cudaMemcpy(h_idx_voxels, d_idx_voxels, size_idx, cudaMemcpyDeviceToHost));
+	*h_idx_voxels = (int*)malloc(size_idx);
+	checkCudaErrors(cudaMemcpy(*h_idx_voxels, d_idx_voxels, size_idx, cudaMemcpyDeviceToHost));
 	/*FILE* doc;
 	fopen_s(&doc, "PASS1_idx.csv", "w");
 	for (int i = 0; i < num_points; i++) 
@@ -219,15 +219,16 @@ int generate_voxel_structure(float* h_input_cloud, float* d_input_cloud, int num
 	for (int i = 52049; i < 52100; i++) printf("%d: %d\n", i + 1, h_idx_voxels[i]);*/
 
 	//----SECOND PASS----
-	h_idx_points = (int*)malloc(size_idx);
-	second_pass(h_idx_voxels, h_idx_points, num_points);
+	*h_idx_points = (int*)malloc(size_idx);
+	second_pass(*h_idx_voxels, *h_idx_points, num_points);
 	/*printf("\nh_idx_voxels:\n");
 	for (int i = 52049; i < 52100; i++) printf("%d: %d\n", i + 1, h_idx_voxels[i]);*/
 
 	//----THIRD PASS----
-	h_pos_out = (int*)malloc(size_idx);
-	h_repeat = (int*)malloc(size_idx);
-	int num_points_out = third_pass(h_idx_points, h_idx_voxels, num_points, h_pos_out, h_repeat);
+	*h_pos_out = (int*)malloc(size_idx);
+	*h_repeat = (int*)malloc(size_idx);
+	for (int i = 0; i < num_points; i++) (*h_repeat)[i] = 0;
+	int num_points_out = third_pass(*h_idx_points, *h_idx_voxels, num_points, *h_pos_out, *h_repeat);
 
 	printf("Voxel structure done!\n");
 

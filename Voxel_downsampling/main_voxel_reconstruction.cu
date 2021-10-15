@@ -24,12 +24,14 @@ Author: Carlos Huapaya
 #define LEAF_SIZE 800.0f
 
 float* read_point_cloud(const char* name, int* num_points);
-int generate_voxel_structure(float* h_input_cloud, float* d_input_cloud, int num_points, float* h_leaf_size, int* h_idx_points, int* h_idx_voxels, int* h_pos_out, int* h_repeat);
+int* read_surface(const char* name, int* num_points);
+int generate_voxel_structure(float* h_input_cloud, float* d_input_cloud, int num_points, float* h_leaf_size, int** h_idx_points, int** h_idx_voxels, int** h_pos_out, int** h_repeat);
+int generate_surface_reconstruction(float* d_input_cloud, int* d_surface, int* h_idx_points, int* h_pos_out, int* h_repeat, int num_points_out, int num_points, int num_triangles);
 
 int main()
 {
 	int n_donuts = 6;//number of donuts to process
-	const char sphere_name[] = "dataXYZ1.csv";//name of the input cloud
+	const char sphere_name[] = "point_cloud_mine.csv";//name of the input cloud
 	const char surface_name[] = "surface.csv";//name of the input cloud
 	int num_points = 0, num_triangles = 0;//initialize the number of points and triangles
 	//cudaError_t err, cudaStatus;
@@ -59,7 +61,7 @@ int main()
 	printf("Number of triangles read: %d\n", num_triangles);
 
 	//allocate memory for the point cloud in the GPU
-	float* d_surface;
+	int* d_surface;
 	size_t bytes_surface = (size_t)3 * (size_t)num_triangles * sizeof(int);
 	checkCudaErrors(cudaMalloc(&d_surface, bytes_surface));
 
@@ -71,11 +73,11 @@ int main()
 	//------------------------------------------
 	printf("\n-----------Voxel Structure-----------\n");
 	float h_leaf_size[3] = { LEAF_SIZE, LEAF_SIZE, LEAF_SIZE };// size of voxel
-	int* h_idx_points = NULL, * h_idx_voxels = NULL, * h_pos_out = NULL, * h_repeat = NULL;
+	int* h_idx_points = nullptr, * h_idx_voxels = nullptr, * h_pos_out = nullptr, * h_repeat = nullptr;
 
 	// generate the voxel grid structure
 	start = clock();
-	int num_points_out = generate_voxel_structure(h_sphere_pc, d_sphere_pc, num_points, h_leaf_size, h_idx_points, h_idx_voxels, h_pos_out, h_repeat);
+	int num_points_out = generate_voxel_structure(h_sphere_pc, d_sphere_pc, num_points, h_leaf_size, &h_idx_points, &h_idx_voxels, &h_pos_out, &h_repeat);
 	end = clock();
 	time = (double)(end - start) / (double)(CLOCKS_PER_SEC);
 	printf("\nNumber of downsampled points: %d\n", num_points_out);
@@ -85,7 +87,14 @@ int main()
 	//----Compute the surface reconstruction----
 	//------------------------------------------
 	printf("\n---------Surface Reconstruction---------\n");
+	start = clock();
+	int num_triangles_out = generate_surface_reconstruction(d_sphere_pc, d_surface, h_idx_points, h_pos_out, h_repeat, num_points_out, num_points, num_triangles);
+	end = clock();
+	time = (double)(end - start) / (double)(CLOCKS_PER_SEC);
+	printf("\nNumber of triangles: %d\n", num_triangles_out);
+	printf("Elapsed time surface reconstruction: %.4lf ms\n", time * 1000);
 
+	free(h_idx_points), free(h_idx_voxels), free(h_pos_out), free(h_repeat);
 
 	return 0;
 }
@@ -165,7 +174,7 @@ int* read_surface(const char* name, int* num_points)
 		token = strtok_s(line, sep, &next_token);
 		while (token != NULL)//on the line
 		{
-			surface[i] = strtof(token, &next_ptr);//convert from string to float
+			surface[i] = (int)strtof(token, &next_ptr);//convert from string to float
 			token = strtok_s(NULL, sep, &next_token);//read next string
 			i++;
 		}
