@@ -25,8 +25,8 @@ Author: Carlos Huapaya
 
 float* read_point_cloud(const char* name, int* num_points);
 int* read_surface(const char* name, int* num_points);
-int generate_voxel_structure(float* h_input_cloud, float* d_input_cloud, int num_points, float* h_leaf_size, int** h_idx_points, int** h_idx_voxels, int** h_pos_out, int** h_repeat);
-int generate_surface_reconstruction(float* d_input_cloud, int* d_surface, int* h_idx_points, int* h_pos_out, int* h_repeat, int num_points_out, int num_points, int num_triangles);
+float* voxel_downsampling(float* h_input_cloud, float* d_input_cloud, int num_points, float* h_leaf_size, int** h_idx_points, int** h_idx_voxels, int** h_pos_out, int** h_repeat, int* num_points_out);
+int* generate_surface_reconstruction(int* h_surface, int* h_idx_points, int* h_pos_out, int* h_repeat, int num_points_out, int num_points, int num_triangles, int* num_triangles_out);
 
 int main()
 {
@@ -34,9 +34,10 @@ int main()
 	const char sphere_name[] = "point_cloud_mine.csv";//name of the input cloud
 	const char surface_name[] = "surface.csv";//name of the input cloud
 	int num_points = 0, num_triangles = 0;//initialize the number of points and triangles
+	int num_points_out = 0, num_triangles_out = 0;//reduced number of points and triangles
 	//cudaError_t err, cudaStatus;
 	clock_t start, end;
-	double time;
+	long double time;
 
 	//------------------------------------------
 	//-----------Read the point cloud-----------
@@ -60,13 +61,8 @@ int main()
 	if (h_surface == NULL) return -1;//check if there was any errors
 	printf("Number of triangles read: %d\n", num_triangles);
 
-	//allocate memory for the point cloud in the GPU
-	int* d_surface;
-	size_t bytes_surface = (size_t)3 * (size_t)num_triangles * sizeof(int);
-	checkCudaErrors(cudaMalloc(&d_surface, bytes_surface));
-
-	//transfer the point cloud from the CPU to GPU
-	checkCudaErrors(cudaMemcpy(d_surface, h_surface, bytes_surface, cudaMemcpyHostToDevice));
+	int* h_surface_new = (int*)malloc((size_t)num_triangles * (size_t)3 * sizeof(int));
+	printf("Size of h_surface: %d\n", sizeof(h_surface) / sizeof(int));
 
 	//------------------------------------------
 	//-----Create the voxel grid structure------
@@ -77,24 +73,29 @@ int main()
 
 	// generate the voxel grid structure
 	start = clock();
-	int num_points_out = generate_voxel_structure(h_sphere_pc, d_sphere_pc, num_points, h_leaf_size, &h_idx_points, &h_idx_voxels, &h_pos_out, &h_repeat);
+	float* downsampled_cloud = voxel_downsampling(h_sphere_pc, d_sphere_pc, num_points, h_leaf_size, &h_idx_points, &h_idx_voxels, &h_pos_out, &h_repeat, &num_points_out);
 	end = clock();
-	time = (double)(end - start) / (double)(CLOCKS_PER_SEC);
-	printf("\nNumber of downsampled points: %d\n", num_points_out);
-	printf("Elapsed time voxel structure: %.4lf ms\n", time*1000);
+	time = (double)(end - start) / (double)(CLOCKS_PER_SEC) * 1e3;
+	printf("Elapsed time voxel structure: %.4lf ms\n", time);
 
 	//------------------------------------------
 	//----Compute the surface reconstruction----
 	//------------------------------------------
 	printf("\n---------Surface Reconstruction---------\n");
 	start = clock();
-	int num_triangles_out = generate_surface_reconstruction(d_sphere_pc, d_surface, h_idx_points, h_pos_out, h_repeat, num_points_out, num_points, num_triangles);
+	int* downsampled_surface = generate_surface_reconstruction(h_surface, h_idx_points, h_pos_out, h_repeat, num_points_out, num_points, num_triangles, &num_triangles_out);
 	end = clock();
-	time = (double)(end - start) / (double)(CLOCKS_PER_SEC);
-	printf("\nNumber of triangles: %d\n", num_triangles_out);
-	printf("Elapsed time surface reconstruction: %.4lf ms\n", time * 1000);
+	time = (double)(end - start) / (double)(CLOCKS_PER_SEC) * 1e3;
+	printf("Elapsed time surface reconstruction: %.4lf ms\n", time);
+
+	//------------------------------------------
+	//----------Generate the DXF file-----------
+	//------------------------------------------
+	//copy this from "Reconstruccion_tuberia"
+
 
 	free(h_idx_points), free(h_idx_voxels), free(h_pos_out), free(h_repeat);
+	free(h_sphere_pc), free(h_surface), free(downsampled_surface);
 
 	return 0;
 }

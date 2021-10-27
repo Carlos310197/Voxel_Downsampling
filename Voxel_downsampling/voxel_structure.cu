@@ -141,7 +141,28 @@ int third_pass(int* idx_points, int* idx_voxels, int n, int* pos_out, int* repea
 	return (counter + 1);
 }
 
-int generate_voxel_structure(float* h_input_cloud, float* d_input_cloud, int num_points, float* h_leaf_size, int** h_idx_points, int** h_idx_voxels, int** h_pos_out, int** h_repeat)
+//----FOURTH PASS----
+//Compute the centroids and insert them into their final position
+void fourth_pass(int* idx_points, int* pos_out, int* repeat, int num_points_out, float* input_cloud, float* out_cloud)
+{
+	float sum[3] = {};
+	for (int i = 0; i < num_points_out; i++)
+	{
+		int rep = repeat[i];//current number of repetitions
+		sum[0] = 0.0f; sum[1] = 0.0f; sum[2] = 0.0f;
+		for (int j = 0; j < rep; j++)
+		{
+			sum[0] += input_cloud[idx_points[pos_out[i] + j] * 3 + 0];
+			sum[1] += input_cloud[idx_points[pos_out[i] + j] * 3 + 1];
+			sum[2] += input_cloud[idx_points[pos_out[i] + j] * 3 + 2];
+		}
+		out_cloud[i * 3 + 0] = sum[0] / (float)rep;
+		out_cloud[i * 3 + 1] = sum[1] / (float)rep;
+		out_cloud[i * 3 + 2] = sum[2] / (float)rep;
+	}
+}
+
+float* voxel_downsampling(float* h_input_cloud, float* d_input_cloud, int num_points, float* h_leaf_size, int** h_idx_points, int** h_idx_voxels, int** h_pos_out, int** h_repeat, int* num_points_out)
 {
 	//-------SET THE PARAMETERS-------
 	float h_inv_leaf_size[3];
@@ -228,7 +249,11 @@ int generate_voxel_structure(float* h_input_cloud, float* d_input_cloud, int num
 	*h_pos_out = (int*)malloc(size_idx);
 	*h_repeat = (int*)malloc(size_idx);
 	for (int i = 0; i < num_points; i++) (*h_repeat)[i] = 0;
-	int num_points_out = third_pass(*h_idx_points, *h_idx_voxels, num_points, *h_pos_out, *h_repeat);
+	*num_points_out = third_pass(*h_idx_points, *h_idx_voxels, num_points, *h_pos_out, *h_repeat);
+
+	//----FOURTH PASS----
+	float* downsampled_cloud = (float*)malloc((size_t)(*num_points_out) * (size_t)3 * sizeof(float));
+	fourth_pass(*h_idx_points, *h_pos_out, *h_repeat, *num_points_out, h_input_cloud, downsampled_cloud);
 
 	printf("Voxel structure done!\n");
 
@@ -236,5 +261,7 @@ int generate_voxel_structure(float* h_input_cloud, float* d_input_cloud, int num
 	cudaFree(d_idx_voxels);
 	cudaFree(d_min_b), cudaFree(d_div_mul), cudaFree(d_inv_leaf_size);
 
-	return num_points_out;
+	printf("\nNumber of downsampled points: %d\n", *num_points_out);
+
+	return downsampled_cloud;
 }

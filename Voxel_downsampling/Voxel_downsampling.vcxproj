@@ -171,10 +171,11 @@
     </CudaCompile>
   </ItemGroup>
   <ItemGroup>
-    <CudaCompile Include="surface_reconstruction.cu">
+    <ClCompile Include="surface_reconstruction.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
-    </CudaCompile>
+      <FileType>Document</FileType>
+    </ClCompile>
     <CudaCompile Include="voxel_structure.cu">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>

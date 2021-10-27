@@ -18,15 +18,15 @@
     <ClCompile Include="voxel_downsampling_cpu.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="surface_reconstruction.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="main_voxel_reconstruction.cu">
       <Filter>Source Files</Filter>
     </CudaCompile>
     <CudaCompile Include="voxel_structure.cu">
-      <Filter>Source Files</Filter>
-    </CudaCompile>
-    <CudaCompile Include="surface_reconstruction.cu">
       <Filter>Source Files</Filter>
     </CudaCompile>
   </ItemGroup>
