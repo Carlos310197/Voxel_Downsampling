@@ -1,0 +1,1 @@
+/usr/local/cuda/bin/nvcc    -Xcompiler=-fPIC -Wno-deprecated-gpu-targets -shared -dlink CMakeFiles/surface_test.dir/main_voxel_reconstruction.cu.o -o CMakeFiles/surface_test.dir/cmake_device_link.o  -L/usr/local/cuda/targets/aarch64-linux/lib/stubs  -L/usr/local/cuda/targets/aarch64-linux/lib libsurface.a 

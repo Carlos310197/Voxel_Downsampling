@@ -1,0 +1,18 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/tumi/Desktop/Ouster_surf_reconst/Voxel_downsampling/surface_reconstruction.cpp
+stdio.h
+-
+stdlib.h
+-
+math.h
+-
+string.h
+-
+
